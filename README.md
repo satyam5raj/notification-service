@@ -35,6 +35,11 @@ $ npm install
 ## Compile and run the project
 
 ```bash
+#setup pg db locally
+$ docker pull postgres
+
+$ docker run --name my-local-postgres -e POSTGRES_PASSWORD=password -p 5432:5432 -v pgdata:/var/lib/postgresql/data -d postgres
+
 # development
 $ npm run start
 
