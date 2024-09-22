@@ -58,6 +58,48 @@ $ npm run test:e2e
 $ npm run test:cov
 ```
 
+## DB Design
+
+```bash
+DB Setup DDL commands -->
+
+CREATE TABLE NotificationEvents (
+   id SERIAL PRIMARY KEY,
+   event_type VARCHAR(50) NOT NULL UNIQUE,
+   description TEXT
+);
+CREATE TABLE NotificationSettings (
+   id SERIAL PRIMARY KEY,
+   event_id INT NOT NULL,
+   is_muted BOOLEAN DEFAULT FALSE,
+   FOREIGN KEY (event_id) REFERENCES NotificationEvents(id) ON DELETE CASCADE,
+   UNIQUE (event_id)
+);
+CREATE TABLE Tenants (
+   id SERIAL PRIMARY KEY,
+   tenant_name VARCHAR(100) NOT NULL unique,
+   description TEXT
+);
+CREATE TABLE Notifications (
+   id SERIAL PRIMARY KEY,
+   event_id INT NOT NULL,
+   tenant_id INT NOT null,
+   message TEXT NOT NULL,
+   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+   FOREIGN KEY (event_id) REFERENCES NotificationEvents(id),
+   FOREIGN KEY (tenant_id) REFERENCES Tenants(id)
+);
+```
+
+## API endpoints
+
+```bash
+GET all the notification settings regarding muted events - /api/v1/notifications/settings
+POST to update notification settings - /api/v1/notifications/settings
+GET to check if a notification setting is muted/enabled or not - /api/v1/notifications/settings/{eventId}
+GET list of the notifications - GET /api/v1/notifications
+```
+
 ## Resources
 
 Check out a few resources that may come in handy when working with NestJS:
