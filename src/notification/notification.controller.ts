@@ -5,7 +5,7 @@ import {
     Body,
     Param,
     InternalServerErrorException,
-  } from '@nestjs/common';
+} from '@nestjs/common';
 import { NotificationService } from './notification.service';
 import * as Sentry from '@sentry/node';
 import { NotificationSettingData } from '../common/interfaces';
@@ -55,6 +55,29 @@ export class NotificationController {
                 }
                 Sentry.captureException(error);
                 throw new InternalServerErrorException('Failed to update notification setting');
+            } finally {
+                span.end();
+            }
+        });
+    }
+
+    @Get('settings/:eventId')
+    async isMuted(@Param('eventId') eventId: number): Promise<{ status: string; message: string; data?: { isMuted?: boolean } }> {
+        return Sentry.startSpan({ op: 'controller', name: `Check if muted: ${eventId}` }, async (span) => {
+            try {
+                Sentry.addBreadcrumb({ message: `Checking if event ID ${eventId} is muted` });
+                const isMuted = await this.notificationService.isNotificationMuted(eventId);
+                return {
+                    status: 'success',
+                    message: `Checked mute status for event ID: ${eventId}`,
+                    data: { isMuted },
+                };
+            } catch (error) {
+                if (error instanceof InternalServerErrorException && error.message.includes('No notification setting found')) {
+                    throw new InternalServerErrorException(`No notification setting found for event ID: ${eventId}`);
+                }
+                Sentry.captureException(error);
+                throw new InternalServerErrorException('Failed to check mute status');
             } finally {
                 span.end();
             }
