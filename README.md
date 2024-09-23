@@ -39,6 +39,12 @@ $ docker pull redis
 
 $ docker run -d --name my-local-redis -p 6380:6379 redis:latest
 
+#setup rabbitmq locally
+$ docker pull rabbitmq:management  
+
+$ docker run -d --name my-local-rabbitmq -p 5673:5672 -p 15673:15672 -e RABBITMQ_DEFAULT_USER=user -e RABBITMQ_DEFAULT_PASS=password rabbitmq:management
+
+#Installed required packages from package.json to run the application.
 $ npm install
 ```
 

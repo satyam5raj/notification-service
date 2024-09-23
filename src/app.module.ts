@@ -5,6 +5,7 @@ import { DatabaseModule } from './database/database.module';
 import { ConfigModule } from '@nestjs/config';
 import { SentryModule } from '@sentry/nestjs/setup';
 import { RedisModule } from './redis/redis.module';
+import { RabbitmqModule } from './rabbitmq/rabbitmq.module';
 
 @Module({
   imports: [
@@ -14,7 +15,8 @@ import { RedisModule } from './redis/redis.module';
       envFilePath: '.env',
     }),
     DatabaseModule,
-    RedisModule
+    RedisModule,
+    RabbitmqModule
   ],
   controllers: [AppController],
   providers: [AppService],
