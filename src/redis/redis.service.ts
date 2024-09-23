@@ -24,6 +24,28 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
     });
   }
 
+  async set(key: string, value: any, ttl?: number) {
+    return Sentry.startSpan({ op: 'service', name: 'Redis Set Key' }, async (span) => {
+      try {
+        const stringValue = JSON.stringify(value);
+        Sentry.addBreadcrumb({ message: `Setting key: ${key} with TTL: ${ttl}` });
+        
+        if (ttl) {
+          await this.redisClient.setex(key, ttl, stringValue);
+        } else {
+          await this.redisClient.set(key, stringValue);
+        }
+        
+        Sentry.addBreadcrumb({ message: `Key set successfully: ${key}` });
+      } catch (error) {
+        Sentry.captureException(error);
+        throw new InternalServerErrorException('Failed to set key in Redis');
+      } finally {
+        span.end();
+      }
+    });
+  }
+
   async onModuleDestroy() {
     return Sentry.startSpan({ op: 'service', name: 'Redis Disconnect' }, async (span) => {
       try {

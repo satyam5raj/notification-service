@@ -1,11 +1,14 @@
 import {
     Controller,
     Get,
+    Post,
+    Body,
+    Param,
     InternalServerErrorException,
-} from '@nestjs/common';
+  } from '@nestjs/common';
 import { NotificationService } from './notification.service';
 import * as Sentry from '@sentry/node';
-import { NotificationSetting, NotificationSettingData } from '../common/interfaces';
+import { NotificationSettingData } from '../common/interfaces';
 
 @Controller('notifications')
 export class NotificationController {
@@ -27,6 +30,31 @@ export class NotificationController {
             } catch (error) {
                 Sentry.captureException(error);
                 throw new InternalServerErrorException('Failed to fetch notification settings');
+            } finally {
+                span.end();
+            }
+        });
+    }
+
+    @Post('settings/:eventId')
+    async updateSetting(
+        @Param('eventId') eventId: number,
+        @Body() body: { isMuted: boolean }
+    ): Promise<{ status: string; message: string }> {
+        return Sentry.startSpan({ op: 'controller', name: `Update Notification Setting: ${eventId}` }, async (span) => {
+            try {
+                Sentry.addBreadcrumb({ message: `Updating notification setting for event ID: ${eventId}` });
+                await this.notificationService.updateNotificationSetting(eventId, body.isMuted);
+                return {
+                    status: 'success',
+                    message: `Notification setting for event ID: ${eventId} updated successfully`,
+                };
+            } catch (error) {
+                if (error instanceof InternalServerErrorException && error.message.includes('No notification setting found')) {
+                    throw new InternalServerErrorException(`No notification setting found for event ID: ${eventId}`);
+                }
+                Sentry.captureException(error);
+                throw new InternalServerErrorException('Failed to update notification setting');
             } finally {
                 span.end();
             }

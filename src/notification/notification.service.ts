@@ -1,12 +1,14 @@
 import { Injectable, InternalServerErrorException } from '@nestjs/common';
 import { DatabaseService } from '../database/database.service';
 import * as Sentry from '@sentry/node';
-import { NotificationSetting, NotificationSettingData } from '../common/interfaces';
+import { NotificationSettingData } from '../common/interfaces';
+import { RedisService } from 'src/redis/redis.service';
 
 @Injectable()
 export class NotificationService {
     constructor(
         private readonly db: DatabaseService,
+        private readonly redisService: RedisService,
     ) { }
 
     async getNotificationSettings(): Promise<NotificationSettingData[]> {
@@ -28,4 +30,38 @@ export class NotificationService {
             }
         });
     }
+
+    async updateNotificationSetting(eventId: number, isMuted: boolean): Promise<void> {
+        return Sentry.startSpan({ op: 'service', name: `Update Notification Setting: ${eventId}` }, async (span) => {
+          try {
+            Sentry.addBreadcrumb({ message: `Checking if notification setting exists for event ID: ${eventId}` });
+      
+            const settingExists = await this.db.queryBuilder()
+              .selectFrom('notificationsettings')
+              .select('event_id')
+              .where('event_id', '=', eventId)
+              .executeTakeFirst();
+      
+            if (!settingExists) {
+              throw new InternalServerErrorException(`No notification setting found for event ID: ${eventId}`);
+            }
+      
+            Sentry.addBreadcrumb({ message: `Updating notification setting in database for event ID: ${eventId}` });
+            await this.db.queryBuilder()
+              .updateTable('notificationsettings')
+              .set({ is_muted: isMuted })
+              .where('event_id', '=', eventId)
+              .execute();
+      
+            Sentry.addBreadcrumb({ message: `Updating Redis cache for event ID: ${eventId}` });
+            // Inserting data into redis for quick lookup 
+            await this.redisService.set(`notification_setting_${eventId}`, isMuted);
+          } catch (error) {
+            Sentry.captureException(error);
+            throw new InternalServerErrorException('Failed to update notification setting');
+          } finally {
+            span.end();
+          }
+        });
+      }  
 }
