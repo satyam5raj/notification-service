@@ -23,3 +23,9 @@ export interface Notification {
     message: string;
     created_at: Date;
 }
+
+export interface NotificationSettingData {
+    id: number;
+    event_type: string;
+    is_muted: boolean;
+}
