@@ -4,6 +4,7 @@ import { AppService } from './app.service';
 import { DatabaseModule } from './database/database.module';
 import { ConfigModule } from '@nestjs/config';
 import { SentryModule } from '@sentry/nestjs/setup';
+import { RedisModule } from './redis/redis.module';
 
 @Module({
   imports: [
@@ -12,7 +13,8 @@ import { SentryModule } from '@sentry/nestjs/setup';
       isGlobal: true,
       envFilePath: '.env',
     }),
-    DatabaseModule
+    DatabaseModule,
+    RedisModule
   ],
   controllers: [AppController],
   providers: [AppService],
