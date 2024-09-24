@@ -5,17 +5,22 @@ import {
     Body,
     Param,
     InternalServerErrorException,
+    UseGuards,
 } from '@nestjs/common';
 import { NotificationService } from './notification.service';
 import * as Sentry from '@sentry/node';
 import { NotificationSettingData } from '../common/interfaces';
+import { AuthGuard } from 'src/common/auth.guard';
+import { Public } from 'src/common/public.decorator';
 
 @Controller('notifications')
+@UseGuards(AuthGuard)
 export class NotificationController {
     constructor(
         private readonly notificationService: NotificationService,
     ) { }
 
+    @Public()
     @Get('settings')
     async getAllSettings(): Promise<{ status: string; message: string; data: NotificationSettingData[] }> {
         return Sentry.startSpan({ op: 'controller', name: 'Get Notification Settings' }, async (span) => {
@@ -36,6 +41,7 @@ export class NotificationController {
         });
     }
 
+    @Public()
     @Post('settings/:eventId')
     async updateSetting(
         @Param('eventId') eventId: number,
@@ -61,6 +67,7 @@ export class NotificationController {
         });
     }
 
+    @Public()
     @Get('settings/:eventId')
     async isMuted(@Param('eventId') eventId: number): Promise<{ status: string; message: string; data?: { isMuted?: boolean } }> {
         return Sentry.startSpan({ op: 'controller', name: `Check if muted: ${eventId}` }, async (span) => {
