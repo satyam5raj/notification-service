@@ -5,10 +5,11 @@ import { DatabaseService } from '../database/database.service';
 import { RedisModule } from 'src/redis/redis.module';
 import { RabbitMQModule } from 'src/rabbitmq/rabbitmq.module';
 import { NotificationConsumer } from './notification.consumer';
+import { AuthModule } from 'src/auth/auth.module';
 
 @Module({
   providers: [NotificationService, DatabaseService, NotificationConsumer],
   controllers: [NotificationController],
-  imports: [RedisModule, RabbitMQModule],
+  imports: [RedisModule, RabbitMQModule, AuthModule],
 })
 export class NotificationModule {}

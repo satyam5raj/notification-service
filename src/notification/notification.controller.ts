@@ -4,20 +4,24 @@ import {
     Post,
     Body,
     Param,
-    InternalServerErrorException,
     UseGuards,
+    Request,
+    UnauthorizedException,
+    InternalServerErrorException,
 } from '@nestjs/common';
 import { NotificationService } from './notification.service';
 import * as Sentry from '@sentry/node';
-import { NotificationSettingData } from '../common/interfaces';
+import { NotificationSettingData, Notification } from '../common/interfaces';
 import { AuthGuard } from 'src/common/auth.guard';
 import { Public } from 'src/common/public.decorator';
+import { AuthService } from 'src/auth/auth.service';
 
 @Controller('notifications')
 @UseGuards(AuthGuard)
 export class NotificationController {
     constructor(
         private readonly notificationService: NotificationService,
+        private readonly authService: AuthService,
     ) { }
 
     @Public()
@@ -89,5 +93,44 @@ export class NotificationController {
                 span.end();
             }
         });
+    }
+
+    @Get()
+    async getNotifications(
+        @Request() req,
+    ): Promise<{ status: string; message: string; data: Notification[] }> {
+        const token = req.headers.authorization?.split(' ')[1];
+        if (!token) {
+            Sentry.captureMessage('Token is missing in request');
+            throw new UnauthorizedException('Token is missing');
+        }
+
+        return Sentry.startSpan(
+            { op: 'controller', name: 'Get Notifications' },
+            async (span) => {
+                try {
+                    const decodedToken = await this.authService.decodeToken(token);
+                    const tenantId = decodedToken?.tenant_id;
+
+                    if (!tenantId) {
+                        Sentry.captureMessage('Tenant ID not found in token');
+                        throw new UnauthorizedException('Tenant ID not found in token');
+                    }
+
+                    Sentry.addBreadcrumb({ message: `Fetching notifications for tenant ID: ${tenantId}` });
+                    const notifications = await this.notificationService.getNotifications(tenantId);
+                    return {
+                        status: 'success',
+                        message: `Fetched notifications for tenant ID: ${tenantId}`,
+                        data: notifications,
+                    };
+                } catch (error) {
+                    Sentry.captureException(error);
+                    throw new InternalServerErrorException('Failed to fetch notifications');
+                } finally {
+                    span.end();
+                }
+            },
+        );
     }
 }

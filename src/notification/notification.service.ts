@@ -1,7 +1,7 @@
 import { Injectable, InternalServerErrorException } from '@nestjs/common';
 import { DatabaseService } from '../database/database.service';
 import * as Sentry from '@sentry/node';
-import { NotificationSettingData } from '../common/interfaces';
+import { NotificationSettingData, Notification } from '../common/interfaces';
 import { RedisService } from 'src/redis/redis.service';
 
 @Injectable()
@@ -126,4 +126,23 @@ export class NotificationService {
             },
         );
     }
+
+    async getNotifications(tenantId: number): Promise<Notification[]> {
+        return Sentry.startSpan({ op: 'service', name: `Get Notifications for Tenant: ${tenantId}` }, async (span) => {
+          try {
+            Sentry.addBreadcrumb({ message: `Fetching notifications for tenant ID: ${tenantId}` });
+            const notifications = await this.db.queryBuilder()
+              .selectFrom('notifications')
+              .selectAll()
+              .where('tenant_id', '=', tenantId)
+              .execute();
+            return notifications;
+          } catch (error) {
+            Sentry.captureException(error);
+            throw new InternalServerErrorException('Failed to fetch notifications');
+          } finally {
+            span.end();
+          }
+        });
+      }
 }

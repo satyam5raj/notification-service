@@ -24,22 +24,6 @@ export class RabbitMQService {
     });
   }
 
-  async sendNotification(eventType: string, message: string) {
-    return Sentry.startSpan({ op: 'service', name: 'Send RabbitMQ Notification' }, async (span) => {
-      try {
-        Sentry.addBreadcrumb({ message: `Sending message to queue: ${eventType}` });
-        await this.channel.assertQueue(eventType);
-        this.channel.sendToQueue(eventType, Buffer.from(message));
-        Sentry.addBreadcrumb({ message: `Message sent to queue: ${eventType}` });
-      } catch (error) {
-        Sentry.captureException(error);
-        throw new InternalServerErrorException('Failed to send message to RabbitMQ');
-      } finally {
-        span.end();
-      }
-    });
-  }
-
   async close() {
     return Sentry.startSpan({ op: 'service', name: 'RabbitMQ Close Connection' }, async (span) => {
       try {
