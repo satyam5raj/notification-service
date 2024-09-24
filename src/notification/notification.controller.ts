@@ -8,6 +8,7 @@ import {
     Request,
     UnauthorizedException,
     InternalServerErrorException,
+    Query,
 } from '@nestjs/common';
 import { NotificationService } from './notification.service';
 import * as Sentry from '@sentry/node';
@@ -95,10 +96,13 @@ export class NotificationController {
         });
     }
 
-    @Get()
+    @Get(':eventId?')
     async getNotifications(
         @Request() req,
-    ): Promise<{ status: string; message: string; data: Notification[] }> {
+        @Param('eventId') eventId?: number,
+        @Query('page') page = 1, // Default to page 1
+        @Query('limit') limit = 10 // Default limit
+    ): Promise<{ status: string; message: string; data: Notification[], totalCount: number; }> {
         const token = req.headers.authorization?.split(' ')[1];
         if (!token) {
             Sentry.captureMessage('Token is missing in request');
@@ -118,11 +122,17 @@ export class NotificationController {
                     }
 
                     Sentry.addBreadcrumb({ message: `Fetching notifications for tenant ID: ${tenantId}` });
-                    const notifications = await this.notificationService.getNotifications(tenantId);
+                    const { notifications, total } = await this.notificationService.getNotifications(tenantId, eventId, page, limit);
+
+                    const message = eventId
+                        ? `Fetched notifications for tenant ID: ${tenantId}, event ID: ${eventId}`
+                        : `Fetched all notifications for tenant ID: ${tenantId}`;
+
                     return {
                         status: 'success',
-                        message: `Fetched notifications for tenant ID: ${tenantId}`,
+                        message,
                         data: notifications,
+                        totalCount: total
                     };
                 } catch (error) {
                     Sentry.captureException(error);

@@ -127,22 +127,35 @@ export class NotificationService {
         );
     }
 
-    async getNotifications(tenantId: number): Promise<Notification[]> {
+    async getNotifications(tenantId: number, eventId?: number, page: number = 1, limit: number = 10): Promise<{ notifications: Notification[], total: number; }> {
         return Sentry.startSpan({ op: 'service', name: `Get Notifications for Tenant: ${tenantId}` }, async (span) => {
-          try {
-            Sentry.addBreadcrumb({ message: `Fetching notifications for tenant ID: ${tenantId}` });
-            const notifications = await this.db.queryBuilder()
-              .selectFrom('notifications')
-              .selectAll()
-              .where('tenant_id', '=', tenantId)
-              .execute();
-            return notifications;
-          } catch (error) {
-            Sentry.captureException(error);
-            throw new InternalServerErrorException('Failed to fetch notifications');
-          } finally {
-            span.end();
-          }
+            try {
+                Sentry.addBreadcrumb({ message: `Fetching notifications for tenant ID: ${tenantId}` });
+
+                let query = this.db.queryBuilder()
+                    .selectFrom('notifications')
+                    .selectAll()
+                    .where('tenant_id', '=', tenantId);
+
+                // Apply the event ID filter if provided
+                if (eventId) {
+                    query = query.where('event_id', '=', eventId);
+                    Sentry.addBreadcrumb({ message: `Filtering notifications by event ID: ${eventId}` });
+                }
+
+                const offset = (page - 1) * limit;
+
+                const responseArray = await query.execute()
+                const totalCount = responseArray.length;
+                const notifications = await query.limit(limit).offset(offset).execute();
+
+                return { notifications, total: totalCount };
+            } catch (error) {
+                Sentry.captureException(error);
+                throw new InternalServerErrorException('Failed to fetch notifications');
+            } finally {
+                span.end();
+            }
         });
-      }
+    }
 }
