@@ -102,4 +102,28 @@ export class NotificationService {
             }
         });
     }
+
+    async createNotification(eventId: number, tenantId: number, message: string): Promise<void> {
+        return Sentry.startSpan(
+            { op: 'service', name: `Create Notification for Tenant: ${tenantId}, Event: ${eventId}` },
+            async (span) => {
+                try {
+                    if (!(await this.isNotificationMuted(eventId))) {
+                        Sentry.addBreadcrumb({ message: `Creating notification for tenant ID: ${tenantId}, event ID: ${eventId}` });
+                        await this.db.queryBuilder()
+                            .insertInto('notifications')
+                            .values({ event_id: eventId, tenant_id: tenantId, message })
+                            .execute();
+                    } else {
+                        Sentry.addBreadcrumb({ message: `Notification for event ID: ${eventId} is muted, skipping creation.` });
+                    }
+                } catch (error) {
+                    Sentry.captureException(error);
+                    throw new InternalServerErrorException('Failed to create notification');
+                } finally {
+                    span.end();
+                }
+            },
+        );
+    }
 }

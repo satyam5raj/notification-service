@@ -5,7 +5,7 @@ import { DatabaseModule } from './database/database.module';
 import { ConfigModule } from '@nestjs/config';
 import { SentryModule } from '@sentry/nestjs/setup';
 import { RedisModule } from './redis/redis.module';
-import { RabbitmqModule } from './rabbitmq/rabbitmq.module';
+import { RabbitMQModule } from './rabbitmq/rabbitmq.module';
 import { NotificationModule } from './notification/notification.module';
 import { AuthModule } from './auth/auth.module';
 import { APP_GUARD } from '@nestjs/core';
@@ -20,7 +20,7 @@ import { AuthGuard } from './common/auth.guard';
     }),
     DatabaseModule,
     RedisModule,
-    RabbitmqModule,
+    RabbitMQModule,
     NotificationModule,
     AuthModule
   ],

@@ -61,6 +61,15 @@ $ npm run start:dev
 $ npm run start:prod
 ```
 
+## Producer -> Queue -> Consumer
+
+```bash
+# Run producer.js in producer folder to push notification into the queue 
+$ node producer.js
+
+# consumer application will check for the muted events and then it will ceate notification for all unmuted events in the notifications table.
+```
+
 ## Run tests
 
 ```bash
