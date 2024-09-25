@@ -34,6 +34,10 @@ export class AuthService {
         return { access_token: accessToken };
       } catch (error) {
         Sentry.captureException(error);
+        // Only throw an InternalServerErrorException for unexpected errors
+        if (error instanceof NotFoundException) {
+          throw error; // Re-throw NotFoundException if it's already caught
+        }
         throw new InternalServerErrorException('Failed to generate token');
       } finally {
         span.end();

@@ -9,11 +9,12 @@ export class AuthController {
 
     @Public()
     @Post('generate-token')
-    async generateToken(@Body('tenant_id') tenantId: number) {
+    async generateToken(@Body() body: { tenant_id: number }) {
+        const { tenant_id } = body;
         return Sentry.startSpan({ op: 'controller', name: 'Generate JWT Token' }, async (span) => {
             try {
-                Sentry.addBreadcrumb({ message: `Generating token for tenant ID: ${tenantId}` });
-                const result = await this.authService.generateToken(tenantId);
+                Sentry.addBreadcrumb({ message: `Generating token for tenant ID: ${tenant_id}` });
+                const result = await this.authService.generateToken(tenant_id);
                 return { status: 'success', message: 'Token generated successfully', result };
             } catch (error) {
                 Sentry.captureException(error);

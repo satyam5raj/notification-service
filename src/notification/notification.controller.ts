@@ -9,13 +9,15 @@ import {
     UnauthorizedException,
     InternalServerErrorException,
     Query,
+    NotFoundException,
+    BadRequestException,
 } from '@nestjs/common';
 import { NotificationService } from './notification.service';
 import * as Sentry from '@sentry/node';
 import { NotificationSettingData, Notification } from '../common/interfaces';
-import { AuthGuard } from 'src/common/auth.guard';
-import { Public } from 'src/common/public.decorator';
-import { AuthService } from 'src/auth/auth.service';
+import { AuthGuard } from '../common/auth.guard';
+import { Public } from '../common/public.decorator';
+import { AuthService } from '../auth/auth.service';
 
 @Controller('notifications')
 @UseGuards(AuthGuard)
@@ -52,6 +54,10 @@ export class NotificationController {
         @Param('eventId') eventId: number,
         @Body() body: { isMuted: boolean }
     ): Promise<{ status: string; message: string }> {
+        if (!eventId || isNaN(eventId)) {
+            throw new BadRequestException('Invalid or missing event ID');
+        }
+
         return Sentry.startSpan({ op: 'controller', name: `Update Notification Setting: ${eventId}` }, async (span) => {
             try {
                 Sentry.addBreadcrumb({ message: `Updating notification setting for event ID: ${eventId}` });
@@ -61,8 +67,10 @@ export class NotificationController {
                     message: `Notification setting for event ID: ${eventId} updated successfully`,
                 };
             } catch (error) {
-                if (error instanceof InternalServerErrorException && error.message.includes('No notification setting found')) {
-                    throw new InternalServerErrorException(`No notification setting found for event ID: ${eventId}`);
+                if (error instanceof NotFoundException) {
+                    throw new NotFoundException(`No notification setting found for event ID: ${eventId}`);
+                } else if (error instanceof BadRequestException) {
+                    throw new BadRequestException('Invalid or missing event ID');
                 }
                 Sentry.captureException(error);
                 throw new InternalServerErrorException('Failed to update notification setting');
@@ -74,7 +82,13 @@ export class NotificationController {
 
     @Public()
     @Get('settings/:eventId')
-    async isMuted(@Param('eventId') eventId: number): Promise<{ status: string; message: string; data?: { isMuted?: boolean } }> {
+    async isMuted(
+        @Param('eventId') eventId: number
+    ): Promise<{ status: string; message: string; data?: { isMuted?: boolean } }> {
+        if (!eventId) {
+            throw new BadRequestException('Event ID is missing');
+        }
+
         return Sentry.startSpan({ op: 'controller', name: `Check if muted: ${eventId}` }, async (span) => {
             try {
                 Sentry.addBreadcrumb({ message: `Checking if event ID ${eventId} is muted` });
@@ -85,8 +99,10 @@ export class NotificationController {
                     data: { isMuted },
                 };
             } catch (error) {
-                if (error instanceof InternalServerErrorException && error.message.includes('No notification setting found')) {
-                    throw new InternalServerErrorException(`No notification setting found for event ID: ${eventId}`);
+                if (error instanceof NotFoundException) {
+                    throw new NotFoundException(`No notification setting found for event ID: ${eventId}`);
+                } else if (error instanceof BadRequestException) {
+                    throw new BadRequestException('Invalid or missing event ID');
                 }
                 Sentry.captureException(error);
                 throw new InternalServerErrorException('Failed to check mute status');
@@ -104,6 +120,7 @@ export class NotificationController {
         @Query('limit') limit = 10 // Default limit
     ): Promise<{ status: string; message: string; data: Notification[], totalCount: number; }> {
         const token = req.headers.authorization?.split(' ')[1];
+
         if (!token) {
             Sentry.captureMessage('Token is missing in request');
             throw new UnauthorizedException('Token is missing');
@@ -121,8 +138,18 @@ export class NotificationController {
                         throw new UnauthorizedException('Tenant ID not found in token');
                     }
 
+                    if (page <= 0 || limit <= 0) {
+                        throw new BadRequestException('Page and limit must be positive integers');
+                    }
+
                     Sentry.addBreadcrumb({ message: `Fetching notifications for tenant ID: ${tenantId}` });
                     const { notifications, total } = await this.notificationService.getNotifications(tenantId, eventId, page, limit);
+
+                    const totalPages = Math.ceil(total / limit);
+
+                    if (page > totalPages && total > 0) {
+                        throw new NotFoundException(`Page ${page} exceeds available total pages (${totalPages})`);
+                    }
 
                     const message = eventId
                         ? `Fetched notifications for tenant ID: ${tenantId}, event ID: ${eventId}`
@@ -135,12 +162,17 @@ export class NotificationController {
                         totalCount: total
                     };
                 } catch (error) {
+                    if (error instanceof NotFoundException) {
+                        throw new NotFoundException('No notifications found for the given criteria');
+                    } else if (error instanceof BadRequestException) {
+                        throw new BadRequestException('Invalid pagination parameters');
+                    }
                     Sentry.captureException(error);
                     throw new InternalServerErrorException('Failed to fetch notifications');
                 } finally {
                     span.end();
                 }
-            },
+            }
         );
     }
 }

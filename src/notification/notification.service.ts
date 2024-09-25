@@ -1,8 +1,8 @@
-import { Injectable, InternalServerErrorException } from '@nestjs/common';
+import { BadRequestException, Injectable, InternalServerErrorException, NotFoundException } from '@nestjs/common';
 import { DatabaseService } from '../database/database.service';
 import * as Sentry from '@sentry/node';
 import { NotificationSettingData, Notification } from '../common/interfaces';
-import { RedisService } from 'src/redis/redis.service';
+import { RedisService } from '../redis/redis.service';
 
 @Injectable()
 export class NotificationService {
@@ -34,8 +34,11 @@ export class NotificationService {
     async updateNotificationSetting(eventId: number, isMuted: boolean): Promise<void> {
         return Sentry.startSpan({ op: 'service', name: `Update Notification Setting: ${eventId}` }, async (span) => {
             try {
-                Sentry.addBreadcrumb({ message: `Checking if notification setting exists for event ID: ${eventId}` });
+                if (!eventId || isNaN(eventId)) {
+                    throw new BadRequestException('Invalid or missing event ID');
+                }
 
+                Sentry.addBreadcrumb({ message: `Checking if notification setting exists for event ID: ${eventId}` });
                 const settingExists = await this.db.queryBuilder()
                     .selectFrom('notificationsettings')
                     .select('event_id')
@@ -43,7 +46,7 @@ export class NotificationService {
                     .executeTakeFirst();
 
                 if (!settingExists) {
-                    throw new InternalServerErrorException(`No notification setting found for event ID: ${eventId}`);
+                    throw new NotFoundException(`No notification setting found for event ID: ${eventId}`);
                 }
 
                 Sentry.addBreadcrumb({ message: `Updating notification setting in database for event ID: ${eventId}` });
@@ -54,9 +57,13 @@ export class NotificationService {
                     .execute();
 
                 Sentry.addBreadcrumb({ message: `Updating Redis cache for event ID: ${eventId}` });
-                // Inserting data into redis for quick lookup 
-                await this.redisService.set(`notification_setting_${eventId}`, isMuted);
+                await this.redisService.set(`notification_setting_${eventId}`, isMuted.toString());
             } catch (error) {
+                if (error instanceof NotFoundException) {
+                    throw new NotFoundException(`No notification setting found for event ID: ${eventId}`);
+                } else if (error instanceof BadRequestException) {
+                    throw new BadRequestException('Invalid or missing event ID');
+                }
                 Sentry.captureException(error);
                 throw new InternalServerErrorException('Failed to update notification setting');
             } finally {
@@ -68,13 +75,17 @@ export class NotificationService {
     async isNotificationMuted(eventId: number): Promise<boolean> {
         return Sentry.startSpan({ op: 'service', name: `Check if muted: ${eventId}` }, async (span) => {
             try {
+                if (!eventId || isNaN(eventId)) {
+                    throw new BadRequestException('Invalid or missing event ID');
+                }
+
                 Sentry.addBreadcrumb({ message: `Checking mute status for event ID: ${eventId} in Redis` });
-                // Retrieving cached notification setting from Redis for quick lookup
                 const cachedSetting = await this.redisService.get(`notification_setting_${eventId}`);
 
                 if (cachedSetting !== null) {
-                    Sentry.addBreadcrumb({ message: `Found cached mute status for event ID: ${eventId}` });
-                    return cachedSetting;
+                    const isMuted = cachedSetting === 'true';
+                    Sentry.addBreadcrumb({ message: `Found cached mute status for event ID: ${eventId}, isMuted: ${isMuted}` });
+                    return isMuted;
                 }
 
                 Sentry.addBreadcrumb({ message: `Querying mute status for event ID: ${eventId} from the database` });
@@ -84,17 +95,21 @@ export class NotificationService {
                     .where('event_id', '=', eventId)
                     .executeTakeFirst();
 
-                if (setting === null) {
-                    throw new InternalServerErrorException(`No notification setting found for event ID: ${eventId}`);
+                if (!setting) {
+                    throw new NotFoundException(`No notification setting found for event ID: ${eventId}`);
                 }
 
                 const isMuted = setting.is_muted;
-
                 Sentry.addBreadcrumb({ message: `Caching mute status for event ID: ${eventId}` });
-                await this.redisService.set(`notification_setting_${eventId}`, isMuted);
+                await this.redisService.set(`notification_setting_${eventId}`, isMuted.toString());
 
                 return isMuted;
             } catch (error) {
+                if (error instanceof NotFoundException) {
+                    throw new NotFoundException(`No notification setting found for event ID: ${eventId}`);
+                } else if (error instanceof BadRequestException) {
+                    throw new BadRequestException('Invalid or missing event ID');
+                }
                 Sentry.captureException(error);
                 throw new InternalServerErrorException('Failed to check mute status');
             } finally {
@@ -108,8 +123,15 @@ export class NotificationService {
             { op: 'service', name: `Create Notification for Tenant: ${tenantId}, Event: ${eventId}` },
             async (span) => {
                 try {
-                    if (!(await this.isNotificationMuted(eventId))) {
+                    const isMuted = await this.isNotificationMuted(eventId);
+
+                    Sentry.addBreadcrumb({
+                        message: `Checked mute status for event ID: ${eventId}, isMuted: ${isMuted}`,
+                    });
+
+                    if (!isMuted) {
                         Sentry.addBreadcrumb({ message: `Creating notification for tenant ID: ${tenantId}, event ID: ${eventId}` });
+
                         await this.db.queryBuilder()
                             .insertInto('notifications')
                             .values({ event_id: eventId, tenant_id: tenantId, message })
@@ -127,28 +149,49 @@ export class NotificationService {
         );
     }
 
-    async getNotifications(tenantId: number, eventId?: number, page: number = 1, limit: number = 10): Promise<{ notifications: Notification[], total: number; }> {
+    async getNotifications(
+        tenantId: number,
+        eventId?: number,
+        page: number = 1,
+        limit: number = 10
+    ): Promise<{ notifications: Notification[], total: number; }> {
         return Sentry.startSpan({ op: 'service', name: `Get Notifications for Tenant: ${tenantId}` }, async (span) => {
             try {
                 Sentry.addBreadcrumb({ message: `Fetching notifications for tenant ID: ${tenantId}` });
-
+    
                 let query = this.db.queryBuilder()
                     .selectFrom('notifications')
                     .selectAll()
                     .where('tenant_id', '=', tenantId);
-
+    
                 // Apply the event ID filter if provided
                 if (eventId) {
                     query = query.where('event_id', '=', eventId);
                     Sentry.addBreadcrumb({ message: `Filtering notifications by event ID: ${eventId}` });
+                    
+                    const eventExists = await this.db.queryBuilder()
+                        .selectFrom('notifications')
+                        .select('event_id')
+                        .where('event_id', '=', eventId)
+                        .where('tenant_id', '=', tenantId)
+                        .executeTakeFirst();
+    
+                    if (!eventExists) {
+                        throw new NotFoundException(`No notifications found for event ID: ${eventId}`);
+                    }
                 }
-
+    
                 const offset = (page - 1) * limit;
-
-                const responseArray = await query.execute()
-                const totalCount = responseArray.length;
+    
+                const totalResponse = await query.execute();
+                const totalCount = totalResponse.length;
+    
+                if (totalCount === 0) {
+                    return { notifications: [], total: 0 };
+                }
+    
                 const notifications = await query.limit(limit).offset(offset).execute();
-
+    
                 return { notifications, total: totalCount };
             } catch (error) {
                 Sentry.captureException(error);
